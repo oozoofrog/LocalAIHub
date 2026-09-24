@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+ROOT="${AIHUB_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  echo 'Usage: qwen-image-2.1-generate "prompt" [output.png]' >&2
+  exit 2
+fi
+
+CLI="$ROOT/Source/stable-diffusion.cpp/build/bin/sd-cli"
+MODELS="$ROOT/Models/Qwen-Image-2.1"
+PROMPT=$1
+OUTPUT=${2:-"$ROOT/Output/Qwen-Image-2.1/$(date +%Y%m%d-%H%M%S)-generation.png"}
+if [ ! -x "$CLI" ]; then echo "Image runtime is missing: $CLI" >&2; exit 1; fi
+mkdir -p "$(dirname "$OUTPUT")"
+exec "$CLI" \
+  --diffusion-model "$MODELS/diffusion/qwen_image_2.1-Q6_K.gguf" \
+  --vae "$MODELS/vae/qwen_image_2.1_vae_bf16.safetensors" \
+  --llm "$MODELS/text_encoder/Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+  --width "${QWEN_WIDTH:-1024}" --height "${QWEN_HEIGHT:-1024}" \
+  --steps "${QWEN_STEPS:-20}" --cfg-scale 6.0 --sampling-method euler \
+  --seed "${QWEN_SEED:-42}" --offload-to-cpu -v -p "$PROMPT" -o "$OUTPUT"

@@ -1,0 +1,32 @@
+# SwiftPM build products and packaged app
+/.build/
+/dist/
+/.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+# Local model data and runtime installations
+/Models/
+/Output/
+/Source/
+/Environments/
+/Cache/
+/Tools/
+/bin/
+
+# Model weights, checkpoints, generated media, and local credentials
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.wav
+*.mp3
+*.m4a
+*.mp4
+*.mov
+*.flac
+*.webm
+.env
+.env.*
+
+.DS_Store

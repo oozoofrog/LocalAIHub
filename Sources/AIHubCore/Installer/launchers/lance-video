@@ -1,0 +1,9 @@
+#!/bin/zsh
+set -euo pipefail
+ROOT="${AIHUB_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+export HF_HOME="$ROOT/Cache/huggingface"
+export HF_HUB_CACHE="$HF_HOME/hub"
+export HF_XET_CACHE="$HF_HOME/xet"
+export HF_ASSETS_CACHE="$HF_HOME/assets"
+export XDG_CACHE_HOME="$ROOT/Cache/xdg"
+exec "$ROOT/Source/lance-mlx/.venv/bin/python" "$ROOT/bin/lance-video.py" "$@"

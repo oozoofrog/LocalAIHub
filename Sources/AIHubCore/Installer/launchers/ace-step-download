@@ -1,0 +1,11 @@
+#!/bin/zsh
+set -euo pipefail
+ROOT="${AIHUB_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+export UV_CACHE_DIR="$ROOT/Cache/uv"
+export UV_PROJECT_ENVIRONMENT="$ROOT/Environments/ACE-Step-1.5-py312"
+export HF_HOME="$ROOT/Cache/huggingface"
+export HF_HUB_CACHE="$HF_HOME/hub"
+export HF_XET_CACHE="$HF_HOME/xet"
+export ACESTEP_CHECKPOINTS_DIR="$ROOT/Models/ACE-Step-1.5"
+cd "$ROOT/Source/ACE-Step-1.5"
+exec "$ROOT/bin/uv" run acestep-download --dir "$ACESTEP_CHECKPOINTS_DIR" "$@"
