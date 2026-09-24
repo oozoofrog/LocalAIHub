@@ -9,6 +9,7 @@ enum Capability: String, CaseIterable, Identifiable, Hashable {
     case transcription
     case video
     case music
+    case translation
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum Capability: String, CaseIterable, Identifiable, Hashable {
         case .transcription: "Transcribe audio"
         case .video: "Create video"
         case .music: "Create music"
+        case .translation: "Translate text"
         }
     }
 
@@ -35,6 +37,7 @@ enum Capability: String, CaseIterable, Identifiable, Hashable {
         case .transcription: "text.quote"
         case .video: "film"
         case .music: "music.note"
+        case .translation: "character.book.closed"
         }
     }
 
@@ -48,6 +51,7 @@ enum Capability: String, CaseIterable, Identifiable, Hashable {
         case .transcription: "Qwen3-ASR"
         case .video: "Lance-3B Video"
         case .music: "ACE-Step 1.5"
+        case .translation: "OPUS-MT · English to Korean"
         }
     }
 }

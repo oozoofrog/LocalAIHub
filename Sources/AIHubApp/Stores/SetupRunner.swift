@@ -8,6 +8,7 @@ enum PackageSetupState: String {
     case downloading
     case ready
     case failed
+    case stopped
 
     var title: String {
         switch self {
@@ -16,6 +17,7 @@ enum PackageSetupState: String {
         case .downloading: "Downloading"
         case .ready: "Ready"
         case .failed: "Needs attention"
+        case .stopped: "Stopped"
         }
     }
 }
@@ -33,10 +35,14 @@ final class SetupRunner: ObservableObject {
 
     private var process: Process?
     private var outputPipe: Pipe?
+    private var outputReader: Task<Void, Never>?
+    private var runToken = UUID()
     private var streamBuffer = ""
     private var startedAt: Date?
     private var ticker: Task<Void, Never>?
     private var activePackage: String?
+    private var stopRequested = false
+    private var stoppingPackage: String?
 
     var elapsedDescription: String {
         let minutes = elapsedSeconds / 60
@@ -67,6 +73,8 @@ final class SetupRunner: ObservableObject {
 
         let child = Process()
         let pipe = Pipe()
+        let token = UUID()
+        runToken = token
         child.executableURL = URL(fileURLWithPath: "/bin/bash")
         child.arguments = [installer.path, "--root", root.path, "--models", packages.map(\.rawValue).joined(separator: ",")]
         if acceptQwenResearchLicense { child.arguments?.append("--accept-qwen-research-license") }
@@ -83,31 +91,44 @@ final class SetupRunner: ObservableObject {
         elapsedSeconds = 0
         streamBuffer = ""
         activePackage = nil
+        stopRequested = false
+        stoppingPackage = nil
         log = "Destination: \(root.path)\nSelected: \(packages.map(\.title).joined(separator: ", "))\n\n"
         outputPipe = pipe
 
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-                return
-            }
-            let text = String(decoding: data, as: UTF8.self)
-            Task { @MainActor [weak self] in self?.receive(text) }
-        }
         child.terminationHandler = { [weak self] child in
             let exitStatus = child.terminationStatus
-            Task { @MainActor [weak self] in self?.finish(exitStatus: exitStatus) }
+            Task { @MainActor [weak self] in
+                guard let self, self.runToken == token else { return }
+                await self.outputReader?.value
+                guard self.runToken == token else { return }
+                self.finish(exitStatus: exitStatus)
+            }
         }
 
         do {
             try child.run()
+            try? pipe.fileHandleForWriting.close()
+            let handle = pipe.fileHandleForReading
+            outputReader = Task.detached(priority: .utility) { [weak self] in
+                while true {
+                    let data = handle.availableData
+                    guard !data.isEmpty else { break }
+                    let text = String(decoding: data, as: UTF8.self)
+                    await MainActor.run { [weak self] in
+                        guard let self, self.runToken == token, self.isRunning else { return }
+                        self.receive(text)
+                    }
+                }
+            }
             process = child
             startedAt = Date()
             startTicker()
         } catch {
-            pipe.fileHandleForReading.readabilityHandler = nil
+            try? pipe.fileHandleForWriting.close()
+            try? pipe.fileHandleForReading.close()
             outputPipe = nil
+            outputReader = nil
             process = nil
             isRunning = false
             status = "Could not start the installer"
@@ -117,6 +138,8 @@ final class SetupRunner: ObservableObject {
 
     func stop() {
         guard let process, process.isRunning else { return }
+        stopRequested = true
+        stoppingPackage = activePackage
         status = "Stopping model setup"
         process.terminate()
     }
@@ -143,9 +166,10 @@ final class SetupRunner: ObservableObject {
             let parts = line.components(separatedBy: "\t")
             guard parts.count >= 4 else { return }
             let packageID = parts[1]
-            let state = PackageSetupState(rawValue: parts[2])
+            var state = PackageSetupState(rawValue: parts[2])
+            if stopRequested && state == .failed { state = .stopped }
             if let state { packageStates[packageID] = state }
-            activePackage = state == .ready || state == .failed ? nil : packageID
+            activePackage = state == .ready || state == .failed || state == .stopped ? nil : packageID
             latestActivity = parts[3]
             status = "\(ModelPackage(rawValue: packageID)?.title ?? packageID) · \(state?.title ?? parts[2])"
             progress = nil
@@ -167,8 +191,9 @@ final class SetupRunner: ObservableObject {
         if !streamBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             consume(streamBuffer)
         }
-        outputPipe?.fileHandleForReading.readabilityHandler = nil
+        try? outputPipe?.fileHandleForReading.close()
         outputPipe = nil
+        outputReader = nil
         process = nil
         isRunning = false
         ticker?.cancel()
@@ -177,13 +202,17 @@ final class SetupRunner: ObservableObject {
         if exitStatus == 0 {
             status = "Setup complete"
             stage = "Selected model groups are ready"
+        } else if stopRequested {
+            if let packageID = stoppingPackage ?? activePackage { packageStates[packageID] = .stopped }
+            status = "Setup stopped"
+            stage = "Stopped by request"
         } else {
             if let activePackage { packageStates[activePackage] = .failed }
-            status = exitStatus == 15 ? "Setup stopped" : "Setup failed · exit status \(exitStatus)"
-            stage = exitStatus == 15 ? "Stopped by request" : "Review the activity log for the failed step"
+            status = exitStatus == 15 ? "Setup interrupted" : "Setup failed · exit status \(exitStatus)"
+            stage = "Review the activity log for the failed step"
         }
         progress = nil
-        append(exitStatus == 0 ? "\nSetup complete.\n" : "\nSetup ended with exit status \(exitStatus).\n")
+        append(exitStatus == 0 ? "\nSetup complete.\n" : stopRequested ? "\nSetup stopped by request.\n" : "\nSetup ended with exit status \(exitStatus).\n")
     }
 
     private func startTicker() {

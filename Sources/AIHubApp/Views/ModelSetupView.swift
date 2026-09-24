@@ -4,11 +4,13 @@ import AIHubCore
 
 struct ModelSetupView: View {
     @ObservedObject var runner: SetupRunner
+    let modelIsRunning: Bool
     @State private var rootPath = AIPaths.root.path
     @State private var selectedPackages = Set<ModelPackage>()
     @State private var acceptedQwenResearchLicense = false
     @State private var didLoadInitialSelection = false
     @State private var isActivityExpanded = false
+    @SceneStorage("modelSetup.lastRunRootPath") private var lastRunRootPath = ""
 
     private var rootURL: URL {
         URL(fileURLWithPath: (rootPath as NSString).expandingTildeInPath, isDirectory: true)
@@ -41,93 +43,26 @@ struct ModelSetupView: View {
         return ByteCountFormatter.string(fromByteCount: capacity, countStyle: .file)
     }
 
+    private var setupCompleted: Bool {
+        !runner.isRunning && runner.status == "Setup complete" && lastRunRootPath == rootURL.path
+    }
+
+    private var hasStoragePath: Bool {
+        !rootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SectionCard(title: "Choose where models live", subtitle: "Downloads, runtimes, caches, and generated files stay outside the project and Git repository.") {
-                HStack(spacing: 10) {
-                    Image(systemName: "externaldrive")
-                        .foregroundStyle(.secondary)
-                    TextField("Model storage folder", text: $rootPath)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(runner.isRunning)
-                    Button("Choose…", systemImage: "folder") { chooseFolder() }
-                        .disabled(runner.isRunning)
-                }
-                HStack {
-                    Label(availableSpace.map { "\($0) available on this volume" } ?? "Available space unknown", systemImage: "internaldrive")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("Selected downloads: about \(selectedGigabytes) GB")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(selectedGigabytes > 0 ? .primary : .secondary)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 18) {
+                setupLeftColumn
+                    .frame(minWidth: 340, idealWidth: 500, maxWidth: .infinity, alignment: .topLeading)
+                setupRightColumn
+                    .frame(minWidth: 300, idealWidth: 380, maxWidth: .infinity, alignment: .topLeading)
             }
 
-            SectionCard(title: "Model groups", subtitle: "Select only the groups you need. Existing complete installs are detected and skipped.") {
-                VStack(alignment: .leading, spacing: 11) {
-                    ForEach(ModelPackage.allCases) { package in
-                        packageRow(package)
-                    }
-                }
-            }
-
-            if selected.contains(where: \.requiresQwenResearchLicense) {
-                SectionCard(title: "Qwen Image 2.1 license", subtitle: "The selected image weights are limited to non-commercial research or evaluation by the publisher's license.") {
-                    Toggle(isOn: $acceptedQwenResearchLicense) {
-                        Text("I accept the Qwen Research License for this download.")
-                            .font(.callout)
-                    }
-                    .toggleStyle(.checkbox)
-                    .disabled(runner.isRunning)
-                    Link("Read the license", destination: URL(string: "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE")!)
-                        .font(.callout)
-                }
-            }
-
-            if runner.isRunning {
-                setupProgress
-            } else {
-                SectionCard(title: runner.status, subtitle: "Model downloads use pinned source revisions and Hugging Face file verification.") {
-                    HStack(spacing: 10) {
-                        Button("Download Selected", systemImage: "arrow.down.circle.fill") {
-                            runner.start(packages: selected, root: rootURL, acceptQwenResearchLicense: acceptedQwenResearchLicense)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(selected.isEmpty || hasUnacceptedQwenPackage || rootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                        Button("Download All Missing") {
-                            let missing = missingPackages
-                            selectedPackages = Set(missing)
-                            runner.start(packages: missing, root: rootURL, acceptQwenResearchLicense: acceptedQwenResearchLicense)
-                        }
-                        .controlSize(.large)
-                        .disabled(missingPackages.isEmpty || (missingPackages.contains(where: \.requiresQwenResearchLicense) && !acceptedQwenResearchLicense) || rootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    if hasUnacceptedQwenPackage {
-                        Label("Accept the Qwen Research License to include Qwen Image 2.1.", systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                }
-            }
-
-            if !runner.log.isEmpty {
-                DisclosureGroup("Installer activity", isExpanded: $isActivityExpanded) {
-                    ScrollView {
-                        Text(runner.log)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                    }
-                    .frame(minHeight: 110, maxHeight: 240)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
-                    .padding(.top, 8)
-                }
-                .font(.callout.weight(.medium))
-                .padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 18) {
+                setupLeftColumn
+                setupRightColumn
             }
         }
         .onAppear {
@@ -143,25 +78,309 @@ struct ModelSetupView: View {
         }
     }
 
+    private var setupLeftColumn: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            storageCard
+            packagesCard
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var setupRightColumn: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            installationCard
+            storagePolicyCard
+            installerActivity
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var storageCard: some View {
+        SectionCard(title: "저장 위치", subtitle: "큰 모델 파일을 다운로드하기 전에 대상 디스크를 확인합니다.") {
+            HStack(spacing: 10) {
+                Image(systemName: "externaldrive")
+                    .foregroundStyle(WorkspacePalette.accent)
+                TextField("모델 저장 폴더", text: $rootPath)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(runner.isRunning)
+                Button("변경…", systemImage: "folder") { chooseFolder() }
+                    .disabled(runner.isRunning)
+            }
+            HStack(alignment: .top, spacing: 10) {
+                storageSummary(label: "사용 가능한 공간", value: availableSpace ?? "확인할 수 없음")
+                storageSummary(label: "선택한 다운로드", value: "약 \(selectedGigabytes) GB")
+            }
+        }
+    }
+
+    private func storageSummary(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.medium))
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(WorkspacePalette.inset, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var packagesCard: some View {
+        SectionCard(title: "모델 패키지", subtitle: "기능별 준비 상태를 확인하고 필요한 그룹을 선택합니다.") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(ModelPackage.allCases) { package in
+                    if package != ModelPackage.allCases.first { Divider() }
+                    packageRow(package)
+                }
+            }
+            Label("준비 상태는 선택한 위치의 모델 파일과 실행 도구를 검사한 결과입니다.", systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var installationCard: some View {
+        SectionCard(title: "설치 진행", subtitle: "다운로드와 준비 단계를 한곳에서 확인합니다.") {
+            HStack(alignment: .top, spacing: 9) {
+                Image(systemName: setupCompleted ? "checkmark.circle.fill" : runner.isRunning ? "arrow.down.circle.fill" : "circle.dotted")
+                    .foregroundStyle(setupCompleted ? WorkspacePalette.good : runner.isRunning ? WorkspacePalette.accent : .secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(installationStatus)
+                        .font(.callout.weight(.semibold))
+                    if runner.isRunning {
+                        Text("모델 파일과 실행 환경을 준비하고 있습니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 11) {
+                timelineStep("저장 위치 지정", completed: hasStoragePath)
+                timelineStep("선택한 모델 설치", completed: setupCompleted, active: runner.isRunning)
+                timelineStep("설치 결과 확인", completed: setupCompleted)
+            }
+            .padding(.vertical, 2)
+
+            installationProgress
+
+            if selected.contains(where: \.requiresQwenResearchLicense) {
+                Divider()
+                VStack(alignment: .leading, spacing: 9) {
+                    Toggle(isOn: $acceptedQwenResearchLicense) {
+                        Text("Qwen Research License에 동의합니다.")
+                            .font(.callout)
+                    }
+                    .toggleStyle(.checkbox)
+                    .disabled(runner.isRunning)
+                    Text("이미지 모델 가중치는 게시자의 조건에 따라 비상업적 연구 또는 평가에 한해 사용할 수 있습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link("라이선스 읽기", destination: URL(string: "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE")!)
+                        .font(.caption)
+                }
+            }
+
+            Divider()
+            installationActions
+        }
+    }
+
+    private var installationStatus: String {
+        if runner.isRunning { return friendlyStage }
+        if setupCompleted { return "선택한 모델 설치 완료" }
+        if !lastRunRootPath.isEmpty && lastRunRootPath != rootURL.path {
+            return "저장 위치가 변경되었습니다"
+        }
+        switch runner.status {
+        case "Models are ready when installed": return "설치 시작 전"
+        case "Setup stopped": return "사용자 요청으로 설치를 중지했습니다"
+        case "Setup interrupted": return "설치가 중단되었습니다"
+        case "Accept the Qwen Image research license before downloading it.": return "Qwen 라이선스 동의가 필요합니다"
+        case "Installer resources are missing": return "설치 도구를 찾을 수 없습니다"
+        case "Could not prepare model storage": return "저장 위치를 준비하지 못했습니다"
+        case "Could not start the installer": return "설치 프로그램을 시작하지 못했습니다"
+        default: return runner.status.hasPrefix("Setup failed") ? "설치를 완료하지 못했습니다" : "설치 상태를 확인하세요"
+        }
+    }
+
+    private var activePackage: (package: ModelPackage, state: PackageSetupState)? {
+        guard lastRunRootPath == rootURL.path else { return nil }
+        for package in ModelPackage.allCases {
+            guard let state = runner.packageStates[package.rawValue] else { continue }
+            if state == .downloading || state == .installing { return (package, state) }
+        }
+        return nil
+    }
+
+    private var friendlyStage: String {
+        if runner.status == "Stopping model setup" { return "설치를 중지하는 중입니다" }
+        if let activePackage {
+            return activePackage.state == .downloading
+                ? "\(packageDisplayName(activePackage.package)) 다운로드 중"
+                : "\(packageDisplayName(activePackage.package)) 실행 환경 준비 중"
+        }
+        let stage = runner.stage.lowercased()
+        if stage.contains("uv runtime manager") { return "패키지 관리자 준비 중" }
+        if stage.contains("python 3.12") { return "Python 실행 환경 준비 중" }
+        if stage.contains("hugging face") { return "모델 다운로드 도구 준비 중" }
+        if stage.contains("source") { return "모델 소스 준비 중" }
+        if stage.contains("launchers") { return "모델 실행 도구 설치 중" }
+        if stage.contains("building") { return "모델 실행 도구 빌드 중" }
+        if stage.contains("environment") || stage.contains("runtime") { return "모델 실행 환경 설치 중" }
+        return "선택한 모델을 준비하는 중입니다"
+    }
+
+    private func timelineStep(_ title: String, completed: Bool = false, active: Bool = false) -> some View {
+        let color: Color = completed ? WorkspacePalette.good : active ? WorkspacePalette.accent : .secondary
+        return HStack(spacing: 9) {
+            Image(systemName: completed ? "checkmark.circle.fill" : active ? "circle.inset.filled" : "circle")
+                .frame(width: 16)
+            Text(title)
+                .font(.caption.weight(active ? .semibold : .regular))
+        }
+        .foregroundStyle(color)
+    }
+
+    @ViewBuilder
+    private var installationProgress: some View {
+        if runner.isRunning {
+            VStack(alignment: .leading, spacing: 9) {
+                if let progress = runner.progress {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                    Text("현재 단계 \(Int(progress * 100))% · \(runner.elapsedDescription) 경과")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                    Text("진행 중 · \(runner.elapsedDescription) 경과")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(activePackage?.state == .downloading
+                     ? "현재 패키지의 파일을 내려받고 검증하는 중입니다."
+                     : "현재 단계가 끝나면 다음 패키지로 진행합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        } else if setupCompleted {
+            ProgressView(value: 1)
+                .progressViewStyle(.linear)
+            Text("선택한 모델 그룹의 설치가 완료되었습니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("설치를 시작하면 실제 단계와 진행률이 여기에 표시됩니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var installationActions: some View {
+        if runner.isRunning {
+            Button("설치 중지", systemImage: "stop.fill", role: .destructive) { runner.stop() }
+                .controlSize(.large)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Button("선택한 모델 설치", systemImage: "arrow.down.circle.fill") {
+                    guard !modelIsRunning else { return }
+                    lastRunRootPath = rootURL.path
+                    runner.start(packages: selected, root: rootURL, acceptQwenResearchLicense: acceptedQwenResearchLicense)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(modelIsRunning || selected.isEmpty || hasUnacceptedQwenPackage || !hasStoragePath)
+
+                Button("미설치 모델 모두 설치") {
+                    guard !modelIsRunning else { return }
+                    let missing = missingPackages
+                    selectedPackages = Set(missing)
+                    lastRunRootPath = rootURL.path
+                    runner.start(packages: missing, root: rootURL, acceptQwenResearchLicense: acceptedQwenResearchLicense)
+                }
+                .controlSize(.large)
+                .disabled(modelIsRunning || missingPackages.isEmpty || (missingPackages.contains(where: \.requiresQwenResearchLicense) && !acceptedQwenResearchLicense) || !hasStoragePath)
+
+                if modelIsRunning {
+                    Label("모델 작업이 끝나면 설치를 시작할 수 있습니다.", systemImage: "hourglass")
+                        .foregroundStyle(.secondary)
+                }
+                if hasUnacceptedQwenPackage {
+                    Label("Qwen Image 2.1을 설치하려면 라이선스에 동의하세요.", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
+            }
+            .font(.caption)
+        }
+    }
+
+    private var storagePolicyCard: some View {
+        SectionCard(title: "저장 정책") {
+            Label("모델, 실행 환경, 캐시, 생성 파일은 선택한 저장 위치에 놓입니다. 앱 소스와 모델 가중치는 별도로 관리합니다.", systemImage: "internaldrive")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("모델 다운로드는 고정된 소스 리비전과 Hugging Face 파일 검증을 사용합니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var installerActivity: some View {
+        if !runner.log.isEmpty {
+            DisclosureGroup("설치 진단 로그", isExpanded: $isActivityExpanded) {
+                ScrollView {
+                    Text(runner.log)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
+                .frame(minHeight: 110, maxHeight: 240)
+                .background(WorkspacePalette.inset, in: RoundedRectangle(cornerRadius: 9))
+                .padding(.top, 8)
+            }
+            .font(.callout.weight(.medium))
+            .padding(.horizontal, 4)
+        }
+    }
+
     private func packageRow(_ package: ModelPackage) -> some View {
         let isReady = package.isReady(root: rootURL)
-        let setupState = runner.packageStates[package.rawValue]
+        let setupState = lastRunRootPath == rootURL.path ? runner.packageStates[package.rawValue] : nil
         let statusTitle: String
         let statusColor: Color
         if setupState == .failed {
-            statusTitle = "Needs attention"
+            statusTitle = "확인 필요"
             statusColor = .red
-        } else if setupState == .installing || setupState == .downloading {
-            statusTitle = setupState?.title ?? "Working"
+        } else if setupState == .stopped {
+            statusTitle = "중지됨"
             statusColor = .orange
-        } else if isReady || setupState == .ready {
-            statusTitle = "Ready"
-            statusColor = .green
+        } else if setupState == .installing || setupState == .downloading {
+            statusTitle = setupState == .downloading ? "다운로드 중" : "준비 중"
+            statusColor = .orange
+        } else if isReady {
+            statusTitle = "준비됨"
+            statusColor = WorkspacePalette.good
+        } else if setupState == .ready {
+            statusTitle = "파일 확인 필요"
+            statusColor = .orange
         } else if setupState == .queued {
-            statusTitle = "Queued"
+            statusTitle = "대기 중"
             statusColor = .secondary
         } else {
-            statusTitle = "Needs download"
+            statusTitle = "설치 필요"
             statusColor = .secondary
         }
 
@@ -172,18 +391,18 @@ struct ModelSetupView: View {
                     .foregroundStyle(isReady ? Color.green : Color.secondary)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(package.title).font(.body.weight(.semibold))
-                        Text(statusTitle.uppercased())
+                        Text(packageDisplayName(package)).font(.body.weight(.semibold))
+                        Text(statusTitle)
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(statusColor)
                     }
-                    Text(package.summary)
+                    Text(packageDisplaySummary(package))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Text(package.sizeEstimate)
+                Text("약 \(package.estimatedGigabytes) GB")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .fixedSize()
@@ -194,30 +413,23 @@ struct ModelSetupView: View {
         .disabled(runner.isRunning)
     }
 
-    private var setupProgress: some View {
-        SectionCard(title: runner.status, subtitle: runner.stage) {
-            if let progress = runner.progress {
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-            } else {
-                ProgressView()
-                    .progressViewStyle(.linear)
-            }
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "arrow.down.doc")
-                    .foregroundStyle(.tint)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(runner.latestActivity.isEmpty ? "Preparing the selected model groups" : runner.latestActivity)
-                        .font(.callout.weight(.medium))
-                        .lineLimit(2)
-                    Text("\(runner.elapsedDescription) elapsed · Keep this window open while setup runs.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Stop", systemImage: "stop.fill", role: .destructive) { runner.stop() }
-                    .disabled(!runner.isRunning)
-            }
+    private func packageDisplayName(_ package: ModelPackage) -> String {
+        switch package {
+        case .image: "Qwen Image 2.1"
+        case .audio: "Qwen3 음성"
+        case .video: "Lance 비디오"
+        case .music: "ACE-Step 음악"
+        case .translation: "영어 → 한국어 번역"
+        }
+    }
+
+    private func packageDisplaySummary(_ package: ModelPackage) -> String {
+        switch package {
+        case .image: "이미지 생성·편집 및 Metal 실행 환경"
+        case .audio: "음성 합성·받아쓰기 모델과 MLX 실행 환경"
+        case .video: "Lance-3B 비디오와 MLX 실행 환경"
+        case .music: "ACE-Step 1.5 직접 생성 및 로컬 웹 UI"
+        case .translation: "OPUS-MT 로컬 텍스트 번역"
         }
     }
 
@@ -234,8 +446,8 @@ struct ModelSetupView: View {
     @MainActor
     private func chooseFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose model storage folder"
-        panel.prompt = "Use This Folder"
+        panel.title = "모델 저장 폴더 선택"
+        panel.prompt = "이 폴더 사용"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true

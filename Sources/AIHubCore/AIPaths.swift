@@ -32,6 +32,8 @@ public enum AIPaths {
     public static var audioOutput: URL { output.appendingPathComponent("Audio", isDirectory: true) }
     public static var imageOutput: URL { output.appendingPathComponent("Qwen-Image-2.1", isDirectory: true) }
     public static var videoOutput: URL { output.appendingPathComponent("Video", isDirectory: true) }
+    public static var musicOutput: URL { output.appendingPathComponent("Music", isDirectory: true) }
+    public static var translationOutput: URL { output.appendingPathComponent("Translation", isDirectory: true) }
     public static var aceSource: URL { root.appendingPathComponent("Source/ACE-Step-1.5", isDirectory: true) }
 
     public static func configureRoot(_ url: URL) throws {

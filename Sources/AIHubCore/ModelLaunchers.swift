@@ -187,6 +187,73 @@ public enum ModelLaunchers {
         )
     }
 
+    public static func generateMusic(
+        prompt: String,
+        lyrics: String = "",
+        language: String = "unknown",
+        duration: Int = 30,
+        bpm: Int? = nil,
+        seed: Int = -1,
+        output: URL? = nil
+    ) throws -> CommandSpec {
+        try requirePrompt(prompt)
+        guard (10...600).contains(duration) else { throw AIHubError.invalidArgument("Music duration must be between 10 and 600 seconds.") }
+        if let bpm, !(30...300).contains(bpm) {
+            throw AIHubError.invalidArgument("Music BPM must be between 30 and 300.")
+        }
+        guard seed >= -1 else { throw AIHubError.invalidArgument("Music seed must be -1 or nonnegative.") }
+        try requirePrompt(language, name: "Vocal language")
+        let target = output ?? AIPaths.timestampedOutput(in: AIPaths.musicOutput, prefix: "music", extension: "wav")
+        guard ["wav", "flac", "mp3"].contains(target.pathExtension.lowercased()) else {
+            throw AIHubError.invalidArgument("Music output must end in .wav, .flac, or .mp3.")
+        }
+        try prepareParent(of: target)
+        var arguments = [
+            "--prompt", prompt,
+            "--lyrics", lyrics,
+            "--language", language,
+            "--duration", String(duration),
+            "--seed", String(seed),
+            "--output", target.path,
+        ]
+        if let bpm { arguments += ["--bpm", String(bpm)] }
+        return CommandSpec(
+            executable: AIPaths.bin.appendingPathComponent("ace-step-generate"),
+            arguments: arguments,
+            workingDirectory: AIPaths.aceSource,
+            label: "Generate music · ACE-Step 1.5",
+            outputURL: target
+        )
+    }
+
+    public static func translate(
+        text: String? = nil,
+        input: URL? = nil,
+        output: URL? = nil
+    ) throws -> CommandSpec {
+        guard (text != nil) != (input != nil) else {
+            throw AIHubError.invalidArgument("Provide exactly one of --text or --input for translation.")
+        }
+        if let text { try requirePrompt(text, name: "English text") }
+        if let input, !FileManager.default.fileExists(atPath: input.path) {
+            throw AIHubError.invalidArgument("Translation input does not exist: \(input.path)")
+        }
+        let target = output ?? AIPaths.timestampedOutput(in: AIPaths.translationOutput, prefix: "translation", extension: "txt")
+        guard target.pathExtension.lowercased() == "txt" else {
+            throw AIHubError.invalidArgument("Translation output must end in .txt.")
+        }
+        try prepareParent(of: target)
+        var arguments = ["--output", target.path]
+        if let text { arguments += ["--text", text] }
+        if let input { arguments += ["--input", input.path] }
+        return CommandSpec(
+            executable: AIPaths.bin.appendingPathComponent("translate-en-ko"),
+            arguments: arguments,
+            label: "Translate English to Korean · OPUS-MT",
+            outputURL: target
+        )
+    }
+
     private static func requirePrompt(_ value: String, name: String = "Prompt") throws {
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw AIHubError.invalidArgument("\(name) must not be empty.")

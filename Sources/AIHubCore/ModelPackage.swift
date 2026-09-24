@@ -5,6 +5,7 @@ public enum ModelPackage: String, CaseIterable, Identifiable, Hashable, Sendable
     case audio
     case video
     case music
+    case translation
 
     public var id: String { rawValue }
 
@@ -14,6 +15,7 @@ public enum ModelPackage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .audio: "Qwen3 speech"
         case .video: "Lance video"
         case .music: "ACE-Step music"
+        case .translation: "English → Korean translation"
         }
     }
 
@@ -22,7 +24,8 @@ public enum ModelPackage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .image: "Text-to-image and image editing · includes the Metal runtime"
         case .audio: "Text-to-speech variants and 0.6B / 1.7B transcription"
         case .video: "Lance-3B Video · MLX runtime"
-        case .music: "ACE-Step 1.5 · local music server"
+        case .music: "ACE-Step 1.5 · direct generation and optional local UI"
+        case .translation: "OPUS-MT · local text translation"
         }
     }
 
@@ -32,6 +35,7 @@ public enum ModelPackage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .audio: "About 12 GB"
         case .video: "About 16 GB"
         case .music: "About 10 GB"
+        case .translation: "About 2 GB including runtime"
         }
     }
 
@@ -41,6 +45,7 @@ public enum ModelPackage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .audio: 12
         case .video: 16
         case .music: 10
+        case .translation: 2
         }
     }
 
@@ -53,6 +58,7 @@ public enum ModelPackage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .audio: checkIDs = ["tts", "asr"]
         case .video: checkIDs = ["video"]
         case .music: checkIDs = ["music"]
+        case .translation: checkIDs = ["translate"]
         }
         let checks = ModelCatalog.checks(root: root)
         return checkIDs.allSatisfy { id in checks.first(where: { $0.id == id })?.isReady == true }
@@ -61,7 +67,7 @@ public enum ModelPackage: String, CaseIterable, Identifiable, Hashable, Sendable
     public static func parseList(_ value: String) throws -> [ModelPackage] {
         let components = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         guard !components.isEmpty, components.allSatisfy({ ModelPackage(rawValue: $0) != nil }) else {
-            throw AIHubError.invalidArgument("Choose model groups from: image, audio, video, music.")
+            throw AIHubError.invalidArgument("Choose model groups from: image, audio, video, music, translation.")
         }
         return Array(Set(components.compactMap(ModelPackage.init(rawValue:)))).sorted { $0.rawValue < $1.rawValue }
     }

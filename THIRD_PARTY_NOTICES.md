@@ -9,6 +9,7 @@ Local AI Studio downloads third-party model files and runtime sources into the u
 - Qwen3-TTS and Qwen3-ASR MLX checkpoints: [mlx-community](https://huggingface.co/mlx-community).
 - Lance-3B Video: [mlx-community/Lance-3B-Video-bf16](https://huggingface.co/mlx-community/Lance-3B-Video-bf16).
 - ACE-Step 1.5: [ACE-Step/Ace-Step1.5](https://huggingface.co/ACE-Step/Ace-Step1.5).
+- English-to-Korean translation: [Helsinki-NLP/opus-mt-tc-big-en-ko](https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-ko), licensed under CC-BY-4.0. Attribute the model when redistributing its licensed files and review the license for other uses.
 
 Read the license attached to each model repository before use. Do not assume that the Local AI Studio source-code terms grant rights to downloaded model files.
 
@@ -20,5 +21,6 @@ Read the license attached to each model repository before use. Do not assume tha
 - [MLX-Audio](https://github.com/Blaizzy/mlx-audio)
 - [uv](https://github.com/astral-sh/uv)
 - [Hugging Face Hub](https://github.com/huggingface/huggingface_hub)
+- [Transformers](https://github.com/huggingface/transformers), [PyTorch](https://github.com/pytorch/pytorch), and [SentencePiece](https://github.com/google/sentencepiece) for the translation runtime
 
 The installer checks out runtime repositories at fixed commits and installs the listed Python tools into the selected storage folder. Consult each source project and package for its license and notices.

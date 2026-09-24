@@ -1,0 +1,22 @@
+#!/bin/zsh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="${AIHUB_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+PYTHON="$ROOT/Environments/translation-py312/bin/python"
+
+if [[ ! -x "$PYTHON" ]]; then
+  echo "Translation Python runtime is missing: $PYTHON" >&2
+  exit 1
+fi
+
+export AIHUB_ROOT="$ROOT"
+export HF_HOME="$ROOT/Cache/huggingface"
+export HF_HUB_CACHE="$HF_HOME/hub"
+export HF_XET_CACHE="$HF_HOME/xet"
+export XDG_CACHE_HOME="$ROOT/Cache/xdg"
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false
+
+exec "$PYTHON" "$SCRIPT_DIR/translate-en-ko.py" "$@"

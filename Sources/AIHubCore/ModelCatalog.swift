@@ -65,12 +65,27 @@ public enum ModelCatalog {
             root.appendingPathComponent("Models/Lance-3B-Video-bf16/vae.safetensors"),
             root.appendingPathComponent("Models/Lance-3B-Video-bf16/vit.safetensors"),
         ]),
-        ModelCheck(id: "music", name: "ACE-Step 1.5 · Gradio", paths: [
+        ModelCheck(id: "music", name: "ACE-Step 1.5 · music generation", paths: [
             root.appendingPathComponent("bin/ace-step"),
+            root.appendingPathComponent("bin/ace-step-generate"),
+            root.appendingPathComponent("bin/ace-step-generate.py"),
             root.appendingPathComponent("Source/ACE-Step-1.5/start_gradio_ui_macos.sh"),
             root.appendingPathComponent("Environments/ACE-Step-1.5-py312/bin/python"),
             root.appendingPathComponent("Models/ACE-Step-1.5/acestep-v15-turbo/model.safetensors"),
             root.appendingPathComponent("Models/ACE-Step-1.5/acestep-5Hz-lm-1.7B/model.safetensors"),
+        ]),
+        ModelCheck(id: "translate", name: "OPUS-MT · English to Korean", paths: [
+            root.appendingPathComponent("bin/translate-en-ko"),
+            root.appendingPathComponent("bin/translate-en-ko.py"),
+            root.appendingPathComponent("Environments/translation-py312/bin/python"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/model.safetensors"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/config.json"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/generation_config.json"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/source.spm"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/target.spm"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/vocab.json"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/tokenizer_config.json"),
+            root.appendingPathComponent("Models/Translation/opus-mt-tc-big-en-ko/special_tokens_map.json"),
         ]),
         ]
     }

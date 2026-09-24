@@ -37,6 +37,21 @@ struct GenerationForm {
     var videoSeed = 42
     var videoMemoryMode = "parallel"
     var videoOutput = ""
+
+    var musicPrompt = ""
+    var musicLyrics = ""
+    var musicInstrumental = false
+    var musicLanguage = "ko"
+    var musicDuration = 30
+    var musicBPM = 0
+    var musicSeed = -1
+    var musicFormat = "wav"
+    var musicOutput = ""
+
+    var translationUsesFile = false
+    var translationText = ""
+    var translationInputPath = ""
+    var translationOutput = ""
 }
 
 struct CapabilityFormView: View {
@@ -44,6 +59,7 @@ struct CapabilityFormView: View {
     @Binding var form: GenerationForm
     @ObservedObject var runner: ModelRunner
     let setupIsRunning: Bool
+    let onRun: (Capability) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -64,71 +80,72 @@ struct CapabilityFormView: View {
                 videoForm
             case .music:
                 musicForm
+            case .translation:
+                translationForm
             }
 
-            if capability != .music {
-                HStack(alignment: .center, spacing: 12) {
-                    Button(action: run) {
-                        Label(runner.isRunning ? "Model is running" : actionTitle, systemImage: runner.isRunning ? "hourglass" : "play.fill")
-                            .frame(minWidth: 174)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(runner.isRunning || setupIsRunning)
-
-                    Text("Runs locally on this Mac. Model startup can take a while.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 12) {
+                Label("이 Mac에서 실행", systemImage: "cpu")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(action: run) {
+                    Label(runner.isRunning ? "작업 진행 중" : actionTitle, systemImage: runner.isRunning ? "hourglass" : "sparkles")
+                        .frame(minWidth: 140)
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(runner.isRunning || setupIsRunning)
             }
         }
     }
 
     private var imageForm: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionCard(title: "Describe the image", subtitle: "Qwen Image 2.1 · 512×512 is a practical first run.") {
-                PromptEditor(text: $form.prompt, promptLabel: "Prompt", placeholder: "A small handmade ceramic teapot on a wooden table, soft morning light…")
-                HStack(spacing: 18) {
-                    Picker("Width", selection: $form.imageWidth) {
+            SectionCard(title: "이미지 설명", subtitle: "Qwen Image 2.1 · 첫 실행에는 512×512를 권장합니다.") {
+                PromptEditor(text: $form.prompt, promptLabel: "프롬프트", placeholder: "나무 탁자 위 작은 도자기 주전자, 부드러운 아침 햇살…")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 12)], alignment: .leading, spacing: 12) {
+                    Picker("너비", selection: $form.imageWidth) {
                         ForEach([512, 768, 1024], id: \.self) { Text("\($0) px").tag($0) }
                     }
-                    Picker("Height", selection: $form.imageHeight) {
+                    Picker("높이", selection: $form.imageHeight) {
                         ForEach([512, 768, 1024], id: \.self) { Text("\($0) px").tag($0) }
                     }
-                    Stepper("Steps: \(form.imageSteps)", value: $form.imageSteps, in: 1...50)
-                    Spacer()
-                    Stepper("Seed: \(form.imageSeed)", value: $form.imageSeed, in: 0...Int.max)
+                    Stepper("단계: \(form.imageSteps)", value: $form.imageSteps, in: 1...50)
+                    Stepper("시드: \(form.imageSeed)", value: $form.imageSeed, in: 0...Int.max)
                 }
-                PathField(title: "Output file (optional)", path: $form.imageOutput, mode: .saveFile, placeholder: "Uses a timestamped PNG in Output/Qwen-Image-2.1")
+                PathField(title: "출력 파일 (선택)", path: $form.imageOutput, mode: .saveFile, placeholder: "이미지 출력 폴더에 PNG로 저장")
             }
             licenseNote
         }
     }
 
     private var imageEditForm: some View {
-        SectionCard(title: "Reference and instruction", subtitle: "The edit wrapper uses the reference image projector and writes a PNG.") {
-            PathField(title: "Reference image", path: $form.editImagePath, mode: .openFile, placeholder: "Choose an image")
-            PromptEditor(text: $form.prompt, promptLabel: "Edit instruction", placeholder: "Preserve the subject and change the background to a sunset beach…")
-            HStack(spacing: 18) {
-                Stepper("Steps: \(form.editSteps)", value: $form.editSteps, in: 1...50)
-                Stepper("Seed: \(form.editSeed)", value: $form.editSeed, in: 0...Int.max)
-                Spacer()
+        SectionCard(title: "원본과 변경 내용", subtitle: "원본 이미지를 참조해 편집하고 PNG로 저장합니다.") {
+            PathField(title: "원본 이미지", path: $form.editImagePath, mode: .openFile, placeholder: "이미지 선택")
+            PromptEditor(text: $form.prompt, promptLabel: "변경할 내용", placeholder: "피사체는 유지하고 배경을 해질녘 바닷가로 바꿔주세요…")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 12)], alignment: .leading, spacing: 12) {
+                Stepper("단계: \(form.editSteps)", value: $form.editSteps, in: 1...50)
+                Stepper("시드: \(form.editSeed)", value: $form.editSeed, in: 0...Int.max)
             }
-            PathField(title: "Output file (optional)", path: $form.editOutput, mode: .saveFile, placeholder: "Uses a timestamped PNG in Output/Qwen-Image-2.1")
+            PathField(title: "출력 파일 (선택)", path: $form.editOutput, mode: .saveFile, placeholder: "이미지 출력 폴더에 PNG로 저장")
             licenseNote
         }
     }
 
     private var speechForm: some View {
-        SectionCard(title: "Speech settings", subtitle: "Qwen3-TTS · all three 1.7B 8-bit variants are installed.") {
-            Picker("Voice model", selection: $form.voiceModel) {
-                ForEach(VoiceModel.allCases) { model in Text(model.title).tag(model) }
+        SectionCard(title: "음성 설정", subtitle: "Qwen3-TTS · 음성 모델과 언어를 선택합니다.") {
+            Picker("음성 모델", selection: $form.voiceModel) {
+                ForEach(VoiceModel.allCases) { model in
+                    Text(model == .customVoice ? "CustomVoice · 기본 화자" : model == .voiceDesign ? "VoiceDesign · 목소리 설명" : "Base · 참조 오디오")
+                        .tag(model)
+                }
             }
-            HStack(spacing: 14) {
-                TextField("Language code", text: $form.ttsLanguage)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 12)], alignment: .leading, spacing: 12) {
+                TextField("언어", text: $form.ttsLanguage)
                     .frame(maxWidth: 210)
                 if form.voiceModel == .customVoice {
-                    Picker("Speaker", selection: $form.ttsVoice) {
+                    Picker("화자", selection: $form.ttsVoice) {
                         Text("Vivian").tag("Vivian")
                         Text("Ryan").tag("Ryan")
                     }
@@ -136,117 +153,154 @@ struct CapabilityFormView: View {
                 }
             }
             if form.voiceModel == .voiceDesign {
-                TextField("Voice description", text: $form.voiceInstruction, prompt: Text("Low, calm Korean voice"))
+                TextField("목소리 설명", text: $form.voiceInstruction, prompt: Text("낮고 차분한 한국어 목소리"))
             } else if form.voiceModel == .clone {
-                PathField(title: "Reference audio", path: $form.referenceAudioPath, mode: .openFile, placeholder: "Choose audio you have permission to use")
-                PromptEditor(text: $form.referenceText, promptLabel: "Exact transcript", placeholder: "Enter the exact words spoken in the reference audio…", minHeight: 74)
+                PathField(title: "참조 오디오", path: $form.referenceAudioPath, mode: .openFile, placeholder: "사용 권한이 있는 오디오 선택")
+                PromptEditor(text: $form.referenceText, promptLabel: "정확한 대본", placeholder: "참조 오디오에서 말한 내용을 그대로 입력하세요…", minHeight: 74)
             }
-            PromptEditor(text: $form.prompt, promptLabel: "Text to speak", placeholder: "안녕하세요. 음성 합성 환경을 준비했습니다.", minHeight: 112)
-            PathField(title: "Output folder", path: $form.ttsOutputDirectory, mode: .directory, placeholder: AIPaths.audioOutput.path)
-            TextField("File prefix (optional)", text: $form.ttsFilePrefix, prompt: Text("Uses a unique timestamped name"))
+            PromptEditor(text: $form.prompt, promptLabel: "읽을 텍스트", placeholder: "안녕하세요. 음성 합성 환경을 준비했습니다.", minHeight: 112)
+            PathField(title: "출력 폴더", path: $form.ttsOutputDirectory, mode: .directory, placeholder: AIPaths.audioOutput.path)
+            TextField("파일 이름 앞부분 (선택)", text: $form.ttsFilePrefix, prompt: Text("비우면 고유한 시간 이름 사용"))
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 360)
         }
     }
 
     private var transcriptionForm: some View {
-        SectionCard(title: "Transcription settings", subtitle: "Qwen3-ASR · choose the smaller 0.6B model for a lighter run.") {
-            PathField(title: "Audio file", path: $form.audioPath, mode: .openFile, placeholder: "Choose an audio recording")
-            HStack(spacing: 16) {
-                Picker("Model size", selection: $form.asrModel) {
-                    ForEach(ASRModel.allCases) { model in Text(model.title).tag(model) }
+        SectionCard(title: "받아쓰기 설정", subtitle: "Qwen3-ASR · 가벼운 실행에는 0.6B 모델을 선택하세요.") {
+            PathField(title: "오디오 파일", path: $form.audioPath, mode: .openFile, placeholder: "녹음 파일 선택")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 12) {
+                Picker("모델 크기", selection: $form.asrModel) {
+                    ForEach(ASRModel.allCases) { model in
+                        Text(model == .large ? "1.7B · 높은 정확도" : "0.6B · 가벼운 실행")
+                            .tag(model)
+                    }
                 }
                 .frame(maxWidth: 260)
-                TextField("Language", text: $form.asrLanguage)
+                TextField("언어", text: $form.asrLanguage)
                     .frame(maxWidth: 220)
-                Picker("Format", selection: $form.asrFormat) {
+                Picker("형식", selection: $form.asrFormat) {
                     ForEach(["txt", "srt", "vtt", "json"], id: \.self) { Text($0.uppercased()).tag($0) }
                 }
                 .frame(maxWidth: 150)
             }
-            TextField("Context / hotwords (optional)", text: $form.asrContext)
-            PathField(title: "Output filename stem", path: $form.asrOutputStem, mode: .saveFile, placeholder: "A file extension is appended from the selected format")
+            TextField("문맥 · 고유어 (선택)", text: $form.asrContext)
+            PathField(title: "출력 파일 이름", path: $form.asrOutputStem, mode: .saveFile, placeholder: "선택한 형식의 확장자가 붙습니다")
         }
     }
 
     private var videoForm: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionCard(title: "Video prompt", subtitle: "Lance-3B Video · BF16 checkpoint · 512×512, 17 frames, 30 steps is the guide starting point.") {
-                PromptEditor(text: $form.prompt, promptLabel: "Prompt", placeholder: "A red panda surfing on a sunny wave…")
-                HStack(spacing: 16) {
-                    Picker("Resolution", selection: $form.videoResolution) {
+            SectionCard(title: "비디오 설명", subtitle: "Lance-3B Video · 첫 실행에는 512×512, 17프레임, 30단계를 권장합니다.") {
+                PromptEditor(text: $form.prompt, promptLabel: "프롬프트", placeholder: "햇살 아래 파도를 타는 붉은 판다…")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 12) {
+                    Picker("해상도", selection: $form.videoResolution) {
                         ForEach([512, 640, 768], id: \.self) { Text("\($0) × \($0)").tag($0) }
                     }
-                    Picker("Frames", selection: $form.videoFrames) {
-                        ForEach([1, 5, 9, 13, 17, 21, 25], id: \.self) { Text("\($0) frames").tag($0) }
+                    Picker("프레임", selection: $form.videoFrames) {
+                        ForEach([1, 5, 9, 13, 17, 21, 25], id: \.self) { Text("\($0)프레임").tag($0) }
                     }
-                    Stepper("Steps: \(form.videoSteps)", value: $form.videoSteps, in: 1...60)
+                    Stepper("단계: \(form.videoSteps)", value: $form.videoSteps, in: 1...60)
                 }
-                HStack(spacing: 16) {
-                    Stepper("Seed: \(form.videoSeed)", value: $form.videoSeed, in: 0...Int.max)
-                    Picker("Memory", selection: $form.videoMemoryMode) {
-                        Text("Parallel · guide default").tag("parallel")
-                        Text("Auto").tag("auto")
-                        Text("Relay · lower peak use").tag("relay")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 12) {
+                    Stepper("시드: \(form.videoSeed)", value: $form.videoSeed, in: 0...Int.max)
+                    Picker("메모리", selection: $form.videoMemoryMode) {
+                        Text("병렬 · 기본값").tag("parallel")
+                        Text("자동").tag("auto")
+                        Text("순차 · 낮은 최대 사용량").tag("relay")
                     }
                     .frame(maxWidth: 290)
-                    Spacer()
                 }
-                PathField(title: "Output file (optional)", path: $form.videoOutput, mode: .saveFile, placeholder: "Uses a timestamped MP4 in Output/Video")
+                PathField(title: "출력 파일 (선택)", path: $form.videoOutput, mode: .saveFile, placeholder: "비디오 출력 폴더에 MP4로 저장")
             }
-            SectionCard(title: "Resource use", subtitle: "The 15.6 GB BF16 video model is memory intensive.") {
-                Label("Close other large generators before starting. The app runs one operation at a time.", systemImage: "memorychip")
+            SectionCard(title: "자원 사용", subtitle: "15.6 GB BF16 비디오 모델은 메모리를 많이 사용합니다.") {
+                Label("시작 전에 다른 대형 생성 작업을 마치세요. 앱은 한 번에 하나의 작업을 실행합니다.", systemImage: "memorychip")
                     .foregroundStyle(.secondary)
             }
         }
     }
 
     private var musicForm: some View {
-        SectionCard(title: "ACE-Step 1.5", subtitle: "Music generation runs in the installed local Gradio interface.") {
-            Label("Starts the local MLX server at 127.0.0.1:7860. Use its page to enter lyrics, tags, duration, and generation settings.", systemImage: "music.note.list")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Label("The server stays attached to this app. Stop it here when you are done.", systemImage: "lock.laptopcomputer")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Button(action: run) {
-                    Label(runner.isRunning ? "Server is running" : "Start ACE-Step", systemImage: "play.fill")
-                        .frame(minWidth: 174)
+        SectionCard(title: "입력", subtitle: "ACE-Step 1.5 · 곡을 앱 안에서 직접 생성합니다.") {
+            PromptEditor(text: $form.musicPrompt, promptLabel: "곡의 분위기", placeholder: "잔잔한 인디 팝, 따뜻한 기타와 부드러운 드럼…")
+            Picker("보컬", selection: $form.musicInstrumental) {
+                Text("보컬 포함").tag(false)
+                Text("연주곡 요청").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 300)
+            if form.musicInstrumental {
+                Text("연주곡 요청은 프롬프트 지시로 전달되며 모델 출력에 따라 보컬이 포함될 수 있습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                PromptEditor(text: $form.musicLyrics, promptLabel: "가사 (선택)", placeholder: "가사를 입력하거나 비워두면 모델이 제안합니다.", minHeight: 92)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 12) {
+                Picker("언어", selection: $form.musicLanguage) {
+                    Text("한국어").tag("ko")
+                    Text("영어").tag("en")
+                    Text("자동").tag("unknown")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(runner.isRunning || setupIsRunning)
-                if runner.musicServerStarted {
-                    Button("Open in Browser", systemImage: "arrow.up.right.square") { runner.openMusicPage() }
-                        .disabled(!runner.musicPageReady)
+                Picker("길이", selection: $form.musicDuration) {
+                    ForEach([30, 60, 120], id: \.self) { Text("\($0)초").tag($0) }
                 }
             }
-            if runner.musicServerStarted && !runner.musicPageReady {
-                Label("Waiting for ACE-Step to finish initializing…", systemImage: "hourglass")
-                    .font(.callout)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 12) {
+                TextField("BPM · 0은 자동", value: $form.musicBPM, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                TextField("시드 · -1은 무작위", value: $form.musicSeed, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                Picker("형식", selection: $form.musicFormat) {
+                    Text("WAV").tag("wav")
+                    Text("FLAC").tag("flac")
+                    Text("MP3").tag("mp3")
+                }
+                .frame(maxWidth: 125)
+            }
+            PathField(title: "출력 파일 (선택)", path: $form.musicOutput, mode: .saveFile, placeholder: "고유한 이름으로 Music 폴더에 저장")
+            if form.musicFormat == "mp3" {
+                Label("MP3 저장에는 로컬 ffmpeg가 필요합니다.", systemImage: "info.circle")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
+    private var translationForm: some View {
+        SectionCard(title: "영어에서 한국어로", subtitle: "OPUS-MT를 로컬에서 실행하고 UTF-8 텍스트 파일로 저장합니다.") {
+            Picker("원문", selection: $form.translationUsesFile) {
+                Text("텍스트").tag(false)
+                Text("파일").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 260)
+            if form.translationUsesFile {
+                PathField(title: "영어 원문 파일", path: $form.translationInputPath, mode: .openFile, placeholder: "UTF-8 텍스트 파일 선택")
+            } else {
+                PromptEditor(text: $form.translationText, promptLabel: "영어 원문", placeholder: "번역할 텍스트를 입력하세요…")
+            }
+            PathField(title: "출력 파일 (선택)", path: $form.translationOutput, mode: .saveFile, placeholder: "번역 출력 폴더에 TXT로 저장")
+        }
+    }
+
     private var licenseNote: some View {
-        Label("Qwen Image 2.1 is under the Qwen Research License for non-commercial research or evaluation.", systemImage: "info.circle")
+        Label("Qwen Image 2.1은 비상업적 연구·평가용 Qwen Research License가 적용됩니다.", systemImage: "info.circle")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
     private var actionTitle: String {
         switch capability {
-        case .overview: "Run model"
-        case .setup: "Set up models"
-        case .image: "Generate image"
-        case .imageEdit: "Edit image"
-        case .speech: "Generate speech"
-        case .transcription: "Transcribe audio"
-        case .video: "Generate video"
-        case .music: "Start ACE-Step"
+        case .overview: "모델 실행"
+        case .setup: "모델 설치"
+        case .image: "이미지 만들기"
+        case .imageEdit: "편집 시작"
+        case .speech: "음성 만들기"
+        case .transcription: "받아쓰기 시작"
+        case .video: "비디오 만들기"
+        case .music: "음악 만들기"
+        case .translation: "번역하기"
         }
     }
 
@@ -307,12 +361,47 @@ struct CapabilityFormView: View {
                     output: optionalURL(form.videoOutput)
                 )
             case .music:
-                spec = ModelLaunchers.musicServer()
+                let basePrompt = form.musicPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !basePrompt.isEmpty else {
+                    throw AIHubError.invalidArgument("곡의 분위기를 입력하세요.")
+                }
+                let prompt = form.musicInstrumental
+                    ? basePrompt + ", instrumental music without vocals"
+                    : basePrompt
+                guard prompt.count < 512 else {
+                    throw AIHubError.invalidArgument("곡 설명은 511자 미만이어야 합니다.")
+                }
+                guard form.musicInstrumental || form.musicLyrics.count < 4096 else {
+                    throw AIHubError.invalidArgument("가사는 4096자 미만이어야 합니다.")
+                }
+                spec = try ModelLaunchers.generateMusic(
+                    prompt: prompt,
+                    lyrics: form.musicInstrumental ? "" : form.musicLyrics,
+                    language: form.musicInstrumental ? "unknown" : form.musicLanguage,
+                    duration: form.musicDuration,
+                    bpm: form.musicBPM == 0 ? nil : form.musicBPM,
+                    seed: form.musicSeed,
+                    output: musicOutputURL()
+                )
+            case .translation:
+                spec = try ModelLaunchers.translate(
+                    text: form.translationUsesFile ? nil : form.translationText,
+                    input: form.translationUsesFile ? optionalURL(form.translationInputPath) : nil,
+                    output: optionalURL(form.translationOutput)
+                )
             }
+            onRun(capability)
             runner.start(spec)
         } catch {
+            onRun(capability)
             runner.report(error.localizedDescription)
         }
+    }
+
+    private func musicOutputURL() -> URL {
+        let selected = optionalURL(form.musicOutput)
+            ?? AIPaths.timestampedOutput(in: AIPaths.musicOutput, prefix: "music", extension: form.musicFormat)
+        return selected.deletingPathExtension().appendingPathExtension(form.musicFormat)
     }
 
     private func optionalURL(_ path: String) -> URL? {
@@ -358,15 +447,16 @@ private struct PathField: View {
     let placeholder: String
 
     var body: some View {
-        HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             Text(title)
                 .font(.subheadline.weight(.medium))
-                .frame(width: 150, alignment: .leading)
-            TextField(placeholder, text: $path)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1)
-            Button("Browse…") { choosePath() }
-                .buttonStyle(.bordered)
+            HStack(spacing: 10) {
+                TextField(placeholder, text: $path)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1)
+                Button("찾아보기…") { choosePath() }
+                    .buttonStyle(.bordered)
+            }
         }
     }
 
@@ -378,7 +468,7 @@ private struct PathField: View {
             panel.canChooseDirectories = mode == .directory
             panel.allowsMultipleSelection = false
             panel.canCreateDirectories = true
-            if mode == .directory { panel.prompt = "Choose Folder" }
+            if mode == .directory { panel.prompt = "폴더 선택" }
             if panel.runModal() == .OK, let url = panel.url { path = url.path }
         case .saveFile:
             let panel = NSSavePanel()

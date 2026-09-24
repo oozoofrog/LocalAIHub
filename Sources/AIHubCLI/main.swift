@@ -101,8 +101,29 @@ enum AIHubCLI {
             )
             try execute(spec)
         case "music":
-            try options.allow([])
-            try runMusicServer()
+            if arguments.count == 1 {
+                try runMusicServer()
+            } else {
+                try options.allow(["prompt", "lyrics", "language", "duration", "bpm", "seed", "output"])
+                let spec = try ModelLaunchers.generateMusic(
+                    prompt: options.required("prompt"),
+                    lyrics: options.value("lyrics") ?? "",
+                    language: options.value("language") ?? "unknown",
+                    duration: options.integer("duration", default: 30),
+                    bpm: try options.optionalInteger("bpm"),
+                    seed: options.integer("seed", default: -1),
+                    output: options.url("output")
+                )
+                try execute(spec)
+            }
+        case "translate":
+            try options.allow(["text", "input", "output"])
+            let spec = try ModelLaunchers.translate(
+                text: options.value("text"),
+                input: options.url("input"),
+                output: options.url("output")
+            )
+            try execute(spec)
         default:
             throw CLIError.usage("Unknown command `\(command)`. Run `ai --help` for commands.")
         }
@@ -210,7 +231,8 @@ enum AIHubCLI {
         }
         print("\nTTS models: custom-voice, voice-design, clone")
         print("ASR models: 1.7b, 0.6b")
-        print("Music generation uses ACE-Step's local Gradio UI.")
+        print("Music: `ai music --prompt ...` generates audio directly; `ai music` opens the ACE-Step UI.")
+        print("Translation: `ai translate --text ...` uses the local English-to-Korean model.")
     }
 
     private static func showStatus() {
@@ -239,11 +261,13 @@ enum AIHubCLI {
                     [--format txt|srt|vtt|json] [--output STEM]
       ai video --prompt TEXT [--resolution 512] [--frames 17 (5,9,13,17,21,25)] [--steps 30] [--seed 42]
                [--memory-mode parallel|auto|relay] [--output PATH]
-      ai music
+      ai music --prompt TEXT [--lyrics TEXT] [--language unknown|ko|en] [--duration 30] [--bpm 92]
+               [--seed -1] [--output PATH.wav|PATH.flac|PATH.mp3]
+      ai music                 # opens the existing ACE-Step local UI
+      ai translate (--text TEXT | --input PATH) [--output PATH.txt]
 
-    `ai music` runs ACE-Step in the foreground, opens its local Gradio page when ready,
-    and stops the server when you press Ctrl-C. The macOS app provides the same model
-    actions with forms and a live process log.
+    `ai music --prompt ...` generates one audio file without a web server. Bare `ai music`
+    keeps the existing ACE-Step local UI workflow in the foreground; Ctrl-C stops it.
     """
 }
 
@@ -289,6 +313,12 @@ private struct Options {
 
     func integer(_ name: String, default defaultValue: Int) throws -> Int {
         guard let value = values[name] else { return defaultValue }
+        guard let result = Int(value) else { throw CLIError.usage("--\(name) must be an integer.") }
+        return result
+    }
+
+    func optionalInteger(_ name: String) throws -> Int? {
+        guard let value = values[name] else { return nil }
         guard let result = Int(value) else { throw CLIError.usage("--\(name) must be an integer.") }
         return result
     }

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_DIR="$SCRIPT_DIR/launchers"
+INSTALL_ARGS=("$@")
 
 ROOT="${AIHUB_ROOT:-}"
 MODELS=""
@@ -25,7 +26,7 @@ while (($#)); do
       shift 2
       ;;
     --models)
-      [[ $# -ge 2 ]] || { echo "--models requires image,audio,video,music or all" >&2; exit 2; }
+      [[ $# -ge 2 ]] || { echo "--models requires image,audio,video,music,translation or all" >&2; exit 2; }
       MODELS="$2"
       shift 2
       ;;
@@ -42,7 +43,7 @@ while (($#)); do
 Local AI Studio installer
 
 Usage:
-  install.sh --models image,audio,video,music [--root PATH]
+  install.sh --models image,audio,video,music,translation [--root PATH]
              [--accept-qwen-research-license] [--dry-run]
 
 Model groups:
@@ -50,6 +51,7 @@ Model groups:
   audio  Qwen3-TTS and Qwen3-ASR (about 12 GB)
   video  Lance-3B Video (about 16 GB)
   music  ACE-Step 1.5 (about 10 GB)
+  translation  OPUS-MT English to Korean (about 2 GB including runtime)
 
 Downloads are placed below ROOT/Models. Model weights are never copied into
 the LocalAIHub project or its Git repository.
@@ -71,14 +73,14 @@ if [[ "$ROOT" != /* ]]; then ROOT="$PWD/$ROOT"; fi
 ROOT="${ROOT%/}"
 
 if [[ "$MODELS" == "all" ]]; then
-  SELECTED=(image audio video music)
+  SELECTED=(image audio video music translation)
 else
   IFS=',' read -r -a SELECTED <<< "$MODELS"
 fi
 
 SEEN_LIST=""
 for item in "${SELECTED[@]}"; do
-  case "$item" in image|audio|video|music) ;; *) echo "Unknown model group: $item" >&2; exit 2 ;; esac
+  case "$item" in image|audio|video|music|translation) ;; *) echo "Unknown model group: $item" >&2; exit 2 ;; esac
   case ",$SEEN_LIST," in *,"$item",*) echo "Duplicate model group: $item" >&2; exit 2 ;; esac
   SEEN_LIST+="$item,"
 done
@@ -110,6 +112,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
       audio) say "Plan: prepare the MLX-Audio runtime; download three Qwen3-TTS and two Qwen3-ASR snapshots." ;;
       video) say "Plan: prepare lance-mlx; download the 15.6 GB Lance-3B Video BF16 checkpoint." ;;
       music) say "Plan: prepare ACE-Step 1.5; download its main checkpoint and 1.7B LM." ;;
+      translation) say "Plan: prepare a Python translation runtime; download the 0.2B English-to-Korean OPUS-MT checkpoint." ;;
     esac
   done
   exit 0
@@ -132,6 +135,50 @@ done
 if has_selected image && ! command -v cmake >/dev/null 2>&1; then
   echo "Install CMake (for example, with 'brew install cmake') before setting up Qwen Image." >&2
   exit 2
+fi
+
+# Keep the installer in a separate job so a Stop signal can reach the active
+# download/build process, not only the shell that is waiting for it.
+if [[ "${AIHUB_INSTALL_SUPERVISED:-}" != "1" ]]; then
+  worker_pid=""
+  worker_pgid=""
+
+  terminate_descendants() {
+    local parent="$1" child
+    while IFS= read -r child; do
+      [[ -n "$child" ]] || continue
+      terminate_descendants "$child"
+      builtin kill -TERM "$child" 2>/dev/null || true
+    done < <(pgrep -P "$parent" 2>/dev/null || true)
+  }
+
+  stop_supervised_install() {
+    trap - TERM INT
+    if [[ -n "$worker_pid" ]] && builtin kill -0 "$worker_pid" 2>/dev/null; then
+      local current_pgid
+      current_pgid="$(ps -o pgid= -p "$worker_pid" 2>/dev/null | tr -d '[:space:]' || true)"
+      if [[ -n "$worker_pgid" && "$worker_pgid" == "$worker_pid" && "$current_pgid" == "$worker_pgid" ]]; then
+        builtin kill -TERM -- "-$worker_pgid" 2>/dev/null || true
+      else
+        terminate_descendants "$worker_pid"
+        builtin kill -TERM "$worker_pid" 2>/dev/null || true
+      fi
+      wait "$worker_pid" 2>/dev/null || true
+    fi
+    exit 143
+  }
+
+  trap stop_supervised_install TERM INT
+  if set -m 2>/dev/null; then :; fi
+  AIHUB_INSTALL_SUPERVISED=1 /bin/bash "$0" "${INSTALL_ARGS[@]}" &
+  worker_pid=$!
+  set +m
+  worker_pgid="$(ps -o pgid= -p "$worker_pid" 2>/dev/null | tr -d '[:space:]' || true)"
+  if wait "$worker_pid"; then
+    exit 0
+  else
+    exit $?
+  fi
 fi
 
 mkdir -p "$ROOT" "$ROOT/bin" "$ROOT/Models" "$ROOT/Source" "$ROOT/Environments" "$ROOT/Cache"
@@ -240,20 +287,56 @@ group_ready() {
         && -s "$ROOT/Models/Lance-3B-Video-bf16/vit.safetensors" ]]
       ;;
     music)
-      [[ -x "$ROOT/bin/ace-step" && -x "$ROOT/Environments/ACE-Step-1.5-py312/bin/python" \
+      [[ -x "$ROOT/bin/ace-step" && -x "$ROOT/bin/ace-step-generate" \
+        && -s "$ROOT/bin/ace-step-generate.py" && -x "$ROOT/Environments/ACE-Step-1.5-py312/bin/python" \
         && -x "$ROOT/Source/ACE-Step-1.5/start_gradio_ui_macos.sh" \
         && -s "$ROOT/Models/ACE-Step-1.5/acestep-v15-turbo/model.safetensors" \
         && -s "$ROOT/Models/ACE-Step-1.5/acestep-5Hz-lm-1.7B/model.safetensors" ]]
+      ;;
+    translation)
+      local model="$ROOT/Models/Translation/opus-mt-tc-big-en-ko"
+      [[ -x "$ROOT/bin/translate-en-ko" && -s "$ROOT/bin/translate-en-ko.py" \
+        && -x "$ROOT/Environments/translation-py312/bin/python" \
+        && -s "$model/model.safetensors" && -s "$model/config.json" \
+        && -s "$model/generation_config.json" && -s "$model/source.spm" \
+        && -s "$model/target.spm" && -s "$model/vocab.json" \
+        && -s "$model/tokenizer_config.json" && -s "$model/special_tokens_map.json" ]]
       ;;
   esac
 }
 
 install_launchers() {
   emit_stage "Installing Local AI Studio launchers"
-  cp "$LAUNCHER_DIR"/* "$ROOT/bin/"
-  chmod +x "$ROOT/bin/"qwen-image-2.1-* "$ROOT/bin/qwen3-tts" "$ROOT/bin/qwen3-asr" \
-    "$ROOT/bin/lance-video" "$ROOT/bin/ace-step" "$ROOT/bin/ace-step-download"
-  mkdir -p "$ROOT/Output/Audio" "$ROOT/Output/Qwen-Image-2.1" "$ROOT/Output/Video"
+  for item in "${SELECTED[@]}"; do
+    case "$item" in
+      image)
+        cp "$LAUNCHER_DIR/qwen-image-2.1-generate" "$LAUNCHER_DIR/qwen-image-2.1-edit" "$ROOT/bin/"
+        chmod +x "$ROOT/bin/qwen-image-2.1-generate" "$ROOT/bin/qwen-image-2.1-edit"
+        mkdir -p "$ROOT/Output/Qwen-Image-2.1"
+        ;;
+      audio)
+        cp "$LAUNCHER_DIR/qwen3-tts" "$LAUNCHER_DIR/qwen3-asr" "$ROOT/bin/"
+        chmod +x "$ROOT/bin/qwen3-tts" "$ROOT/bin/qwen3-asr"
+        mkdir -p "$ROOT/Output/Audio"
+        ;;
+      video)
+        cp "$LAUNCHER_DIR/lance-video" "$LAUNCHER_DIR/lance-video.py" "$ROOT/bin/"
+        chmod +x "$ROOT/bin/lance-video"
+        mkdir -p "$ROOT/Output/Video"
+        ;;
+      music)
+        cp "$LAUNCHER_DIR/ace-step" "$LAUNCHER_DIR/ace-step-download" \
+          "$LAUNCHER_DIR/ace-step-generate" "$LAUNCHER_DIR/ace-step-generate.py" "$ROOT/bin/"
+        chmod +x "$ROOT/bin/ace-step" "$ROOT/bin/ace-step-download" "$ROOT/bin/ace-step-generate"
+        mkdir -p "$ROOT/Output/Music"
+        ;;
+      translation)
+        cp "$LAUNCHER_DIR/translate-en-ko" "$LAUNCHER_DIR/translate-en-ko.py" "$ROOT/bin/"
+        chmod +x "$ROOT/bin/translate-en-ko"
+        mkdir -p "$ROOT/Output/Translation"
+        ;;
+    esac
+  done
 }
 
 install_image() {
@@ -327,6 +410,25 @@ install_music() {
     "$ROOT/Models/ACE-Step-1.5"
 }
 
+install_translation() {
+  emit_package translation installing "Preparing the English-to-Korean runtime"
+  local environment="$ROOT/Environments/translation-py312"
+  if [[ ! -x "$environment/bin/python" ]]; then
+    emit_stage "Creating the translation Python environment"
+    "$UV" venv --python 3.12 "$environment"
+  fi
+  if ! "$environment/bin/python" -c 'import transformers, torch, sentencepiece, sacremoses, safetensors' >/dev/null 2>&1; then
+    emit_stage "Installing the translation runtime"
+    "$UV" pip install --python "$environment/bin/python" \
+      'transformers==4.57.6' 'torch==2.10.0' 'sentencepiece==0.2.2' \
+      'sacremoses==0.2.0' 'safetensors==0.7.0'
+  fi
+  download_repo translation Helsinki-NLP/opus-mt-tc-big-en-ko ae8606b7b29a495f31ce679cee2007f536a3a5ce \
+    "$ROOT/Models/Translation/opus-mt-tc-big-en-ko" \
+    config.json generation_config.json model.safetensors source.spm target.spm \
+    vocab.json tokenizer_config.json special_tokens_map.json
+}
+
 trap 'status=$?; if [[ $status -ne 0 && -n "${CURRENT_PACKAGE:-}" ]]; then emit_package "$CURRENT_PACKAGE" failed "Setup stopped with exit status $status"; fi' EXIT
 
 install_launchers
@@ -343,6 +445,7 @@ for item in "${SELECTED[@]}"; do
     audio) install_audio ;;
     video) install_video ;;
     music) install_music ;;
+    translation) install_translation ;;
   esac
   if ! group_ready "$item"; then
     echo "Required files are still missing for the $item group." >&2

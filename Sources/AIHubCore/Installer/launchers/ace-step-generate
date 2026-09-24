@@ -1,0 +1,25 @@
+#!/bin/zsh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="${AIHUB_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+SOURCE="$ROOT/Source/ACE-Step-1.5"
+PYTHON="$ROOT/Environments/ACE-Step-1.5-py312/bin/python"
+
+if [[ ! -d "$SOURCE" || ! -x "$PYTHON" ]]; then
+  echo "ACE-Step source or Python runtime is missing under $ROOT" >&2
+  exit 1
+fi
+
+export AIHUB_ROOT="$ROOT"
+export ACESTEP_CHECKPOINTS_DIR="$ROOT/Models/ACE-Step-1.5"
+export ACESTEP_LM_BACKEND=mlx
+export HF_HOME="$ROOT/Cache/huggingface"
+export HF_HUB_CACHE="$HF_HOME/hub"
+export HF_XET_CACHE="$HF_HOME/xet"
+export HF_ASSETS_CACHE="$HF_HOME/assets"
+export XDG_CACHE_HOME="$ROOT/Cache/xdg"
+export TOKENIZERS_PARALLELISM=false
+export PYTHONPATH="$SOURCE${PYTHONPATH:+:$PYTHONPATH}"
+
+exec "$PYTHON" "$SCRIPT_DIR/ace-step-generate.py" "$@"
