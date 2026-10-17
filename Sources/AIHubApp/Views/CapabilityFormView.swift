@@ -16,7 +16,7 @@ struct GenerationForm {
     var editOutput = ""
 
     var voiceModel: VoiceModel = .customVoice
-    var ttsVoice = "Vivian"
+    var ttsVoice = ModelLaunchers.defaultTTSVoice
     var ttsLanguage = "Korean"
     var voiceInstruction = ""
     var referenceAudioPath = ""
@@ -146,6 +146,7 @@ struct CapabilityFormView: View {
                     .frame(maxWidth: 210)
                 if form.voiceModel == .customVoice {
                     Picker("화자", selection: $form.ttsVoice) {
+                        Text("Sohee").tag("Sohee")
                         Text("Vivian").tag("Vivian")
                         Text("Ryan").tag("Ryan")
                     }

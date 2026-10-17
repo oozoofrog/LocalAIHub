@@ -37,6 +37,8 @@ public enum ASRModel: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum ModelLaunchers {
+    public static let defaultTTSVoice = "Sohee"
+
     public static func imageGenerate(
         prompt: String,
         output: URL? = nil,
@@ -88,7 +90,7 @@ public enum ModelLaunchers {
     public static func textToSpeech(
         text: String,
         model: VoiceModel = .customVoice,
-        voice: String = "Vivian",
+        voice: String = ModelLaunchers.defaultTTSVoice,
         language: String = "Korean",
         instruction: String = "",
         referenceAudio: URL? = nil,

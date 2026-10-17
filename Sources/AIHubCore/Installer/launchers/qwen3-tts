@@ -7,4 +7,14 @@ export HF_XET_CACHE="$HF_HOME/xet"
 export HF_ASSETS_CACHE="$HF_HOME/assets"
 export XDG_CACHE_HOME="$ROOT/Cache/xdg"
 MODEL="${QWEN3_TTS_MODEL:-$ROOT/Models/MLX-Audio/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit}"
-exec "$ROOT/Environments/mlx-audio-py312/bin/mlx_audio.tts.generate" --model "$MODEL" "$@"
+tts_args=("$@")
+has_voice=false
+for tts_arg in "$@"; do
+  case "$tts_arg" in
+    --voice|--voice=*) has_voice=true ;;
+  esac
+done
+if [[ "$MODEL" == *CustomVoice* && "$has_voice" == false ]]; then
+  tts_args+=(--voice Sohee)
+fi
+exec "$ROOT/Environments/mlx-audio-py312/bin/mlx_audio.tts.generate" --model "$MODEL" "${tts_args[@]}"

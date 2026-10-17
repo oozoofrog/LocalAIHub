@@ -42,7 +42,7 @@ The script does not change shell profiles. If `~/.local/bin` is not already on `
 
 ai image --prompt "A handmade ceramic teapot in soft morning light" --width 512 --height 512
 ai image-edit --image /path/to/reference.png --prompt "Change the background to a sunset beach"
-ai tts --text "안녕하세요. 음성 합성 환경을 준비했습니다." --model custom-voice --voice Vivian --language Korean
+ai tts --text "안녕하세요. 음성 합성 환경을 준비했습니다." --model custom-voice --voice Sohee --language Korean
 ai transcribe --audio /path/to/recording.wav --model 1.7b --language Korean --format srt
 ai video --prompt "A red panda surfing on a sunny wave" --resolution 512 --frames 17 --steps 30 --memory-mode parallel
 ai music --prompt "Warm acoustic indie pop" --lyrics "오늘의 발걸음을 따라" --language ko --duration 30

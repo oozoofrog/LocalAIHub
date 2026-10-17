@@ -64,7 +64,7 @@ enum AIHubCLI {
             let spec = try ModelLaunchers.textToSpeech(
                 text: options.required("text"),
                 model: model,
-                voice: options.value("voice") ?? "Vivian",
+                voice: options.value("voice") ?? ModelLaunchers.defaultTTSVoice,
                 language: options.value("language") ?? "Korean",
                 instruction: options.value("instruction") ?? "",
                 referenceAudio: options.url("reference-audio"),
@@ -255,7 +255,7 @@ enum AIHubCLI {
       ai models
       ai image --prompt TEXT [--output PATH] [--width 512] [--height 512] [--steps 20] [--seed 42]
       ai image-edit --image PATH --prompt TEXT [--output PATH] [--steps 20] [--seed 42]
-      ai tts --text TEXT [--model custom-voice|voice-design|clone] [--voice Vivian] [--language Korean]
+      ai tts --text TEXT [--model custom-voice|voice-design|clone] [--voice \(ModelLaunchers.defaultTTSVoice)] [--language Korean]
              [--instruction TEXT] [--reference-audio PATH --reference-text TEXT] [--output DIRECTORY] [--prefix NAME]
       ai transcribe --audio PATH [--model 1.7b|0.6b] [--language Korean] [--context TEXT]
                     [--format txt|srt|vtt|json] [--output STEM]
