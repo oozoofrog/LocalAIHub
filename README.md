@@ -1,5 +1,7 @@
 # Local AI Studio
 
+English | [한국어](README.ko.md)
+
 Local AI Studio is a native macOS app and command-line interface for installing and running local image, speech, video, music, and English-to-Korean translation models on Apple Silicon. The app downloads the selected model files and their pinned runtime sources into a separate storage folder. Model weights, caches, generated media, and downloaded runtime checkouts are excluded from this Git repository.
 
 ## Requirements
